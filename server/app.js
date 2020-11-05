@@ -14,7 +14,6 @@ var OAuth2Strategy = require('passport-oauth').OAuth2Strategy;
 var request        = require('request'); // "Request" library
 var querystring    = require('querystring');
 var cookieParser   = require('cookie-parser');
-var handlebars     = require('handlebars');
 
 
 var IPaddr = 'localhost:3001'
