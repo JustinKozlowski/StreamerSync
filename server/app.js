@@ -7,6 +7,21 @@
  * https://developer.spotify.com/web-api/authorization-guide/#authorization_code_flow
  */
 
+
+/*
+
+To Do  before deployment:
+  Enable premium only
+  Make so viewers can switch streams
+  Make so streamers can't register to streams?
+  Make so viewers can unregister
+  Make so streamers can manually unregister
+  Make so viewers automatically unregister?
+
+*/
+
+
+
 var express        = require('express'); // Express web server framework
 var session        = require('express-session');
 var passport       = require('passport');
@@ -121,6 +136,23 @@ passport.use('twitch', new OAuth2Strategy({
   }
 ));
 
+
+
+function getAppTokenTwitch(){
+  var url = 'https://id.twitch.tv/oauth2/token?client_id=' + TWITCH_CLIENT_ID + 
+  '&client_secret=' + TWITCH_SECRET + 
+  '&grant_type=client_credentials';
+  //Requests tokens
+  request.post(url, function(error, response, body){
+    var received = JSON.parse(body)
+    console.log(received["access_token"]);
+    TwitchAppToken = received["access_token"];
+  });
+}
+
+var TwitchAppToken = '';
+getAppTokenTwitch()
+
 // Set route to start OAuth link, this is where you define scopes to request
 app.get('/auth/twitch', passport.authenticate('twitch', { scope: '' }));
 
@@ -129,16 +161,14 @@ app.get('/auth/twitch/callback', passport.authenticate('twitch', { successRedire
 
 // If user has an authenticated session, display it, otherwise display link to authenticate
 app.get('/', function (req, res) {
-  if(req.session && req.session.passport && req.session.passport.user) {
-    console.log('at root /');
-    res.sendStatus(204);
-  } else {
-    res.sendFile(__dirname + "/public/index.html");
+  if(req.cookies["twitchID"]){
+
   }
+  res.sendFile(__dirname + "/public/index.html");
 });
 
 app.get('/registerstream', function(req, res) {
-  console.log();
+  console.log(req.session.passport.user.data);
   console.log(req.session.passport.user.data[0].login);
   console.log("Twitch Auth Cookie created")
   res.cookie('twitchID', req.session.passport.user.data[0].login);
@@ -191,9 +221,7 @@ app.get('/loggedin', function(req, res) {
       }));
   } else {
     var streamerID = req.cookies['twitchID'];
-    res.clearCookie('twitchID');
     res.clearCookie(stateKey);
-
     //Set Authorization options for post to get tokens
     var authOptions = {
       url: 'https://accounts.spotify.com/api/token',
@@ -213,7 +241,7 @@ app.get('/loggedin', function(req, res) {
       if (!error && response.statusCode === 200) {
         //Get tokens from response
         console.log('tokens received')
-        console.log(body);
+        //console.log(body);
         var access_token = body.access_token;
         var refresh_token = body.refresh_token;
 
@@ -224,7 +252,7 @@ app.get('/loggedin', function(req, res) {
           json: true
         };
         request.get(options, function(error, response, body){
-          console.log(body);
+          //console.log(body);
           var premium = (body.product == "premium");
           //
           if(1){ //replace to premium when deploying
@@ -257,8 +285,8 @@ app.get('/loggedin', function(req, res) {
                   viewers: []
                 }
               }
+              res.redirect('/');
             });
-            res.redirect('/registered');
           }
           else {
             res.send('premium required')
@@ -290,23 +318,30 @@ app.get('/registered', function(req, res) {
 
 //Add viewers to listen
 app.get('/viewer/listen', function(req, res) {
-  var state = generateRandomString(16);
-  res.cookie(stateKey, state);
   var stream = req.query.stream;
-  console.log(stream);
   res.cookie("stream", stream);
-  var redirect_uri = 'http://' + IPaddr +'/viewer/loggedin';
-  // your application requests authorization
-  var scope = 'user-modify-playback-state';
-  res.redirect('https://accounts.spotify.com/authorize?' +
-    querystring.stringify({
-      response_type: 'code',
-      client_id: client_id,
-      scope: scope,
-      redirect_uri: redirect_uri,
-      state: state
-    })
-  );
+  if(streams[stream]){
+    var state = generateRandomString(16);
+    res.cookie(stateKey, state);
+    
+    var redirect_uri = 'http://' + IPaddr +'/viewer/loggedin';
+    // your application requests authorization
+    var scope = 'user-modify-playback-state';
+    res.redirect('https://accounts.spotify.com/authorize?' +
+      querystring.stringify({
+        response_type: 'code',
+        client_id: client_id,
+        scope: scope,
+        redirect_uri: redirect_uri,
+        state: state
+      })
+    );
+  }
+  else{
+    res.cookie("no_stream", true);
+    res.sendStatus(204);
+  }
+  
 });
 
 app.get('/viewer/loggedin', function(req, res) {
@@ -325,7 +360,7 @@ app.get('/viewer/loggedin', function(req, res) {
       }));
   } else {
     var stream = req.cookies['stream'];
-    res.clearCookie('stream');
+    //res.clearCookie('stream');
     res.clearCookie(stateKey);
 
     //Set Authorization options for post to get tokens
@@ -361,6 +396,7 @@ app.get('/viewer/loggedin', function(req, res) {
           //Add streamer to DB
           
           var user_id = body["id"];
+          res.cookie("viewerID", user_id);
           users[user_id] = {
             access: access_token,
             refresh: refresh_token,
@@ -401,9 +437,9 @@ app.get('/viewer/loggedin', function(req, res) {
             }
             
           });
+          res.redirect('/');
         });
         // we can also pass the token to the browser to make requests from there
-        res.redirect('/viewer/registered');
       } else {
         res.redirect('/#' +
           querystring.stringify({
@@ -421,10 +457,34 @@ app.get('/viewer/registered', function(req, res) {
   
 });
 
+app.get('/status/streamer', function(req, res) {
+  var streamer = req.query.stream;
+  var exists = !!streams[streamer];
+  if (exists){
+    res.send(true);
+  }
+  else {
+    res.send(false);
+  }
+});
+
+app.get('/status/viewer', function(req, res) {
+  var viewer = req.query.viewer;
+  console.log(viewer);
+  var exists = !!users[viewer];
+  console.log(users);
+  if (exists){
+    res.send(true);
+  }
+  else {
+    res.send(false);
+  }
+});
+
 //Whether actively listening to stream or not
 app.get('/viewer/toggle', function(req, res) {
   console.log("viewer toggled");
-  var user = req.query["user_id"];
+  var user = req.query.viewer;
   users[user].listening = !users[user].listening;
   res.sendStatus(204);
 });
@@ -441,7 +501,7 @@ var users = {
 
 //holder for data structure to be used
 var streams = {
-  "streamer": {
+  /*"streamer": {
     song: "songid",
     viewers: {
       "userid1": "listening", 
@@ -449,13 +509,17 @@ var streams = {
     },
     access: "auth token",
     refersh: "refresh token"
-  }
+  }*/
 }
 
 
 
 //Functionality to ensure music remains synced
 function checkSong(streamer, lastChecked, song) {
+  //if streamer disconnected, end checks
+  if(!streams[streamer]){
+    return;
+  }
   var access_token = streams[streamer].access;
   var options = {
     url: 'https://api.spotify.com/v1/me/player/currently-playing',
@@ -555,6 +619,52 @@ function checkSong(streamer, lastChecked, song) {
   //var song_length[duration_ms: 188493]
 }
 
+function checkStreams(){
+  console.log('Checking streams');
+  console.log(TwitchAppToken);
+  var stream_ids = Object.keys(streams)
+  var options = {
+    url: '',
+    headers: { 
+      'Authorization': 'Bearer ' + TwitchAppToken,
+      'Accept': 'application/json',
+      'Client-Id': TWITCH_CLIENT_ID,
+      'Content-Type': 'application/json',
+    },
+    json: true,
+  };
+  for(i=0; i<stream_ids.length;i++){
+    var stream = stream_ids[i];
+    console.log(stream);
+    options.url = 'https://api.twitch.tv/helix/streams?user_login=' + stream;
+    request.get(options, function(error, response, body){
+      //if body.data empty array, streamer offline
+      if(body.error){
+        console.log(body);
+      }
+      else{
+        console.log("check body:");
+        console.log(body);
+        if(!body.data[0]){ //check exists
+          removeStreamer(stream);
+        }
+      }
+    });
+  }
+  setTimeout(checkStreams, 10000);
+}
+
+//function to remove streamer and viewers from db
+function removeStreamer(streamer){
+  var viewers = streams[streamer].viewers;
+  for(i = 0; i<viewers.length; i++){
+    delete users[viewers[i]];
+  }
+  delete streams[streamer];
+  console.log(streamer + " removed");
+}
+
+//checkStreams();
 
 app.listen(3001);
 console.log("Listening on Port 8888");

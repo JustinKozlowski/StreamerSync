@@ -12,17 +12,95 @@
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script type="text/javascript">
-        
+        function checkStatus(){
+            console.log("cookies: ");
+            console.log(document.cookie);
+            var stream = getCookie("twitchID");
+            if(stream){
+                axios.get(window.location.href + "status/streamer?stream="+stream)
+                .then(response =>{
+                    if(response.data){
+                        document.getElementById("status").innerText = 'Registered Streamer ' + stream;
+                    }
+                });
+                
+            }
+            var viewer = getCookie("viewerID");
+            if(viewer){
+                axios.get(window.location.href+ "status/viewer?viewer="+viewer)
+                .then(response =>{
+                    if(response.data){ 
+                        document.getElementById("status").innerText = 'Registered Viewer';
+                        document.getElementById("listening").innerText = 'Stop Listening';
+                    }
+                });
+                
+            }
+
+            var no_connection = getCookie("no_stream");
+            if(no_connection){
+                document.getElementById("no_stream").innerText = 'Could Not Connect: Stream not Registered';
+                document.cookie = "no_stream=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            }
+        }
+        function toggleViewer(){
+            var viewer = getCookie("viewerID");
+            if(viewer){
+                axios.get(window.location.href+ "status/viewer?viewer="+viewer)
+                .then(response =>{
+                    if(response.data){ 
+                        axios.get(window.location.href+ "viewer/toggle?viewer="+viewer)
+                        if(document.getElementById("listening").innerText == 'Stop Listening'){
+                            document.getElementById("listening").innerText = 'Start Listening'
+                        }
+                        else{
+                            document.getElementById("listening").innerText = 'Stop Listening';
+                        }
+                    }
+                });
+                
+            }
+        }
+        function connectStream(){
+            var stream = document.getElementById("inputStream").value;
+            axios.get(window.location.href+ "viewer/listen?stream="+stream).then(
+                response =>{
+                    location.reload();
+                }
+            );
+        }
+        function getCookie(cname) {
+            var name = cname + "=";
+            var decodedCookie = decodeURIComponent(document.cookie);
+            var ca = decodedCookie.split(';');
+            for(var i = 0; i <ca.length; i++) {
+                var c = ca[i];
+                while (c.charAt(0) == ' ') {
+                    c = c.substring(1);
+                }
+                if (c.indexOf(name) == 0) {
+                    return c.substring(name.length, c.length);
+                }
+            }
+            return "";
+        }
     </script>
 
     <style>
 
     </style>
 </head>
-<body>
+<body onload="checkStatus()">
+<div class="d-flex justify-content-center align-items-center">
+    <h1>Current status: <span id="status">Unregistered</span></h1>
+</div>
 <div class="d-flex justify-content-center align-items-center" style="height: 100px;">
     <a href="/auth/twitch"><button type="button" class="btn btn-primary btn-rounded">Register Stream</button></a>
+</div>
+<div class="d-flex justify-content-center align-items-center">
+    <h3><span id="no_stream"></span></h3>
 </div>
 <div class="d-flex justify-content-center align-items-center" style="height: 100px;">
     <form class="form-inline" method="GET" action="/viewer/listen">
@@ -30,17 +108,11 @@
           <label for="inputStream" class="sr-only">Stream</label>
           <input type="text" class="form-control" id="inputStream" placeholder="Stream" name="stream">
         </div>
-        <button type="submit" class="btn btn-primary mb-2">Connect to Stream</button>
+        <button onclick="connectStream()" class="btn btn-primary mb-2">Connect to Stream</button>
     </form>
 </div>
 <div class="d-flex justify-content-center align-items-center" style="height: 100px;">
-    <form class="form-inline" method="GET" action="/viewer/toggle">
-        <div class="form-group mx-sm-3 mb-2">
-          <label for="inputStream" class="sr-only">Toggle listening</label>
-          <input type="text" class="form-control" id="inputStream" placeholder="User ID" name="user_id">
-        </div>
-        <button type="submit" class="btn btn-primary mb-2">Toggle</button>
-    </form>
+    <button class="btn btn-primary mb-2" onclick="toggleViewer()"><span id="listening">Not Registered</span></button></div>
 </div>
 </body>
 </html>
